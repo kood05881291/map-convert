@@ -1,2 +1,96 @@
 # map-convert
 地图链接转换
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Google → 国内地图导航</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body { font-family: sans-serif; padding: 20px; background:#f6f6f6; }
+    textarea, button { width:100%; font-size:15px; }
+    textarea { height:90px; padding:10px; }
+    button { padding:14px; margin-top:10px; }
+    .result { margin-top:20px; background:#fff; padding:15px; border-radius:6px; }
+    a { word-break: break-all; color:#1677ff; }
+  </style>
+</head>
+<body>
+
+<h2>Google 地图 → 国内地图导航</h2>
+
+<textarea id="googleInput" placeholder="粘贴 Google Maps 分享链接"></textarea>
+<button onclick="generate()">生成导航信息</button>
+
+<div id="result" class="result" style="display:none;"></div>
+
+<script>
+/* ========= 1. 解析 Google ========= */
+function parseGoogle(url) {
+  let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+          url.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  return m ? { lat:+m[1], lng:+m[2] } : null;
+}
+
+/* ========= 2. 坐标转换 ========= */
+const PI=Math.PI, A=6378245.0, EE=0.00669342162296594323;
+function outChina(lat,lng){return lng<72||lng>137||lat<0.8||lat>55.8;}
+function transformLat(x,y){let r=-100+2*x+3*y+.2*y*y+.1*x*y+.2*Math.sqrt(Math.abs(x));
+r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
+r+=(20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;
+r+=(160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3;return r;}
+function transformLng(x,y){let r=300+x+2*y+.1*x*x+.1*x*y+.1*Math.sqrt(Math.abs(x));
+r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;
+r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;
+r+=(150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3;return r;}
+function wgs84ToGcj02(lat,lng){
+if(outChina(lat,lng))return{lat,lng};
+let dLat=transformLat(lng-105,lat-35), dLng=transformLng(lng-105,lat-35);
+let rad=lat/180*PI, magic=Math.sin(rad); magic=1-EE*magic*magic;
+let sqrt=Math.sqrt(magic);
+dLat=dLat*180/((A*(1-EE))/(magic*sqrt)*PI);
+dLng=dLng*180/(A/sqrt*Math.cos(rad)*PI);
+return{lat:lat+dLat,lng:lng+dLng};
+}
+
+/* ========= 3. 生成导航链接 ========= */
+function buildLinks(lat,lng){
+  return {
+    // 高德：直接导航（App）
+    amapApp: `amapuri://route/plan/?dlat=${lat}&dlon=${lng}&dname=目的地&dev=0&t=0`,
+    // 高德：网页中转（可分享）
+    amapWeb: `https://uri.amap.com/navigation?to=${lng},${lat}`,
+    // 百度：网页中转
+    baiduWeb: `https://api.map.baidu.com/marker?location=${lat},${lng}&title=目的地&output=html`,
+    // 腾讯：网页中转
+    tencentWeb: `https://apis.map.qq.com/uri/v1/marker?marker=coord:${lat},${lng};title:目的地`
+  };
+}
+
+/* ========= 4. 主流程 ========= */
+function generate(){
+  const input=document.getElementById('googleInput').value.trim();
+  if(!input)return alert('请输入 Google Maps 链接');
+  const parsed=parseGoogle(input);
+  if(!parsed)return alert('无法解析该 Google 链接');
+
+  const gcj=wgs84ToGcj02(parsed.lat,parsed.lng);
+  const l=buildLinks(gcj.lat,gcj.lng);
+
+  const div=document.getElementById('result');
+  div.style.display='block';
+  div.innerHTML=`
+    <p><b>纬度：</b>${gcj.lat}</p>
+    <p><b>经度：</b>${gcj.lng}</p>
+    <p><b>高德导航（App）：</b><br>
+      <button onclick="location.href='${l.amapApp}'">打开高德导航</button>
+    </p>
+    <p><b>高德网页：</b><br><a href="${l.amapWeb}">${l.amapWeb}</a></p>
+    <p><b>百度网页：</b><br><a href="${l.baiduWeb}">${l.baiduWeb}</a></p>
+    <p><b>腾讯网页：</b><br><a href="${l.tencentWeb}">${l.tencentWeb}</a></p>
+  `;
+}
+</script>
+
+</body>
+</html>
